@@ -11,6 +11,7 @@ public class TrayMenuModel: ObservableObject {
     /// Is "layouting" enabled
     @Published var isEnabled: Bool = true
     @Published var workspaces: [WorkspaceViewModel] = []
+    @Published var monitors: [MonitorViewModel] = []
     @Published var experimentalUISettings: ExperimentalUISettings = ExperimentalUISettings()
     @Published var sponsorshipMessage: String = sponsorshipPrompts.randomElement().orDie()
 }
@@ -40,14 +41,34 @@ public class TrayMenuModel: ObservableObject {
             isVisible: $0.isVisible,
         )
     }
-    var items = sortedMonitors.map {
-        TrayItem(type: .workspace, name: $0.activeWorkspace.name, isActive: $0.activeWorkspace == focus.workspace)
+    // Get workspaces from the first monitor for trayItems
+    var items: [TrayItem] = []
+    if let firstMonitor = sortedMonitors.first {
+        // Get all non-empty workspaces for first monitor
+        let firstMonitorWorkspaces = Workspace.all
+            .filter { !$0.isEffectivelyEmpty && $0.workspaceMonitor.monitorId == firstMonitor.monitorId }
+            .map { workspace in
+                TrayItem(type: .workspace, name: workspace.name, isActive: workspace == focus.workspace)
+            }
+        
+        // Add focused workspace if it's empty and on first monitor
+        var allFirstMonitorItems = firstMonitorWorkspaces
+        if focus.workspace.isEffectivelyEmpty && focus.workspace.workspaceMonitor.monitorId == firstMonitor.monitorId {
+            allFirstMonitorItems.append(TrayItem(type: .workspace, name: focus.workspace.name, isActive: true))
+        }
+        
+        items = allFirstMonitorItems.sorted { item1, item2 in
+            return item1.name.localizedStandardCompare(item2.name) == .orderedAscending
+        }
     }
     let mode = activeMode?.takeIf { $0 != mainModeId }?.first.map { TrayItem(type: .mode, name: $0.uppercased(), isActive: true) }
     if let mode {
         items.insert(mode, at: 0)
     }
     TrayMenuModel.shared.trayItems = items
+    TrayMenuModel.shared.monitors = sortedMonitors.map { monitor in
+        MonitorViewModel(monitorId: monitor.monitorId ?? 0)
+    }
 }
 
 struct WorkspaceViewModel: Hashable {
@@ -56,6 +77,10 @@ struct WorkspaceViewModel: Hashable {
     let isFocused: Bool
     let isEffectivelyEmpty: Bool
     let isVisible: Bool
+}
+
+struct MonitorViewModel: Hashable {
+    let monitorId: Int
 }
 
 enum TrayItemType: String, Hashable {

@@ -61,7 +61,7 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
                 case .squares:
                     MenuBarLabel(viewModel.trayText, trayItems: viewModel.trayItems)
                 case .i3:
-                    MenuBarLabel(viewModel.trayText, trayItems: viewModel.trayItems, workspaces: viewModel.workspaces)
+                    MenuBarLabel(viewModel.trayText, trayItems: viewModel.trayItems, workspaces: viewModel.workspaces, monitors: viewModel.monitors)
             }
         } else {
             Image(systemName: "pause.circle.fill")

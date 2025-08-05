@@ -10,6 +10,7 @@ struct MenuBarLabel: View {
     var color: Color?
     var trayItems: [TrayItem]?
     var workspaces: [WorkspaceViewModel]?
+    var monitors: [MonitorViewModel]?
 
     let hStackSpacing = CGFloat(6)
     let itemSize = CGFloat(40)
@@ -21,12 +22,13 @@ struct MenuBarLabel: View {
         return color ?? (menuColorScheme == .dark ? Color.white : Color.black)
     }
 
-    init(_ text: String, textStyle: MenuBarTextStyle = .monospaced, color: Color? = nil, trayItems: [TrayItem]? = nil, workspaces: [WorkspaceViewModel]? = nil) {
+    init(_ text: String, textStyle: MenuBarTextStyle = .monospaced, color: Color? = nil, trayItems: [TrayItem]? = nil, workspaces: [WorkspaceViewModel]? = nil, monitors: [MonitorViewModel]? = nil) {
         self.text = text
         self.textStyle = textStyle
         self.color = color
         self.trayItems = trayItems
         self.workspaces = workspaces
+        self.monitors = monitors
     }
 
     var body: some View {
@@ -49,7 +51,9 @@ struct MenuBarLabel: View {
             if let trayItems {
                 HStack(spacing: hStackSpacing) {
                     ForEach(trayItems, id: \.id) { item in
+                        let isEmptyFocused = item.isActive && (workspaces?.first { $0.name == item.name }?.isEffectivelyEmpty ?? false)
                         itemView(for: item)
+                            .opacity(isEmptyFocused ? 0.6 : 1.0)
                         if item.type == .mode {
                             Text(":")
                                 .font(.system(.largeTitle, design: textStyle.design))
@@ -57,20 +61,43 @@ struct MenuBarLabel: View {
                                 .bold()
                         }
                     }
-                    if let workspaces {
-                        let otherWorkspaces = workspaces.filter { !$0.isEffectivelyEmpty && !$0.isVisible }
-                        if !otherWorkspaces.isEmpty {
-                            Group {
-                                Text("|")
-                                    .font(.system(.largeTitle))
-                                    .foregroundStyle(finalColor)
-                                    .bold()
-                                    .padding(.bottom, 6)
-                                ForEach(otherWorkspaces, id: \.name) { item in
-                                    itemView(for: TrayItem(type: .workspace, name: item.name, isActive: false))
+                    if let workspaces, let monitors {
+                        // Simple approach: for each remaining monitor, show its workspaces with a pipe
+                        
+                        ForEach(Array(monitors.dropFirst()), id: \.monitorId) { monitor in
+                            // Compute all workspaces for this monitor (non-empty + empty focused)
+                            let nonEmptyWorkspaces = workspaces.filter { workspace in
+                                !workspace.isEffectivelyEmpty &&
+                                Workspace.get(byName: workspace.name).workspaceMonitor.monitorId == monitor.monitorId
+                            }
+                            
+                            let focusedWorkspace = workspaces.first { $0.isFocused }
+                            let emptyFocusedWorkspace: [WorkspaceViewModel] = {
+                                if let focused = focusedWorkspace,
+                                   focused.isEffectivelyEmpty,
+                                   Workspace.get(byName: focused.name).workspaceMonitor.monitorId == monitor.monitorId {
+                                    return [focused]
+                                }
+                                return []
+                            }()
+                            
+                            let monitorWorkspaces = nonEmptyWorkspaces + emptyFocusedWorkspace
+                            
+                            if !monitorWorkspaces.isEmpty {
+                                Group {
+                                    Text("|")
+                                        .font(.system(.largeTitle))
+                                        .foregroundStyle(finalColor)
+                                        .opacity(0.6)
+                                        .bold()
+                                        .padding(.bottom, 6)
+                                    ForEach(monitorWorkspaces.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }), id: \.name) { workspace in
+                                        let isEmptyFocused = workspace.isFocused && workspace.isEffectivelyEmpty
+                                        itemView(for: TrayItem(type: .workspace, name: workspace.name, isActive: workspace.isFocused))
+                                            .opacity(isEmptyFocused ? 0.6 : 1.0)
+                                    }
                                 }
                             }
-                            .opacity(0.6)
                         }
                     }
                 }
@@ -105,8 +132,7 @@ struct MenuBarLabel: View {
                 let text = Text(item.name)
                     .font(.system(.largeTitle))
                     .bold()
-                    .padding(.horizontal, itemBorderSize * 2)
-                    .frame(height: itemSize)
+                    .frame(width: itemSize, height: itemSize)
                 if item.isActive {
                     ZStack {
                         text.background {
@@ -116,14 +142,14 @@ struct MenuBarLabel: View {
                     }
                     .compositingGroup()
                     .foregroundStyle(finalColor)
-                    .frame(height: itemSize)
+                    .frame(width: itemSize, height: itemSize)
                 } else {
                     text.background {
                         RoundedRectangle(cornerRadius: itemCornerRadius, style: .circular)
                             .strokeBorder(lineWidth: itemBorderSize)
                     }
                     .foregroundStyle(finalColor)
-                    .frame(height: itemSize)
+                    .frame(width: itemSize, height: itemSize)
                 }
             }
         }
